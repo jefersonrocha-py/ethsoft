@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  ethsoft-modular:
+    build: .
+    networks:
+      - web
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    restart: always
+
+networks:
+  web:
+    external: true
