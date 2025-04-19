@@ -1,7 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="welcome-container">
-  <h1>Bem-vindo, {{ username }}!</h1>
-  <a href="{{ url_for('status') }}" class="stButton stButton--primary">Ir para Status</a>
+  <!-- Título principal com Avatar -->
+  <h1 class="welcome-title">
+    <i class="fas fa-user-circle"></i> Bem-vindo, {{ username }}!
+  </h1>
+  
+  <!-- Mensagem motivacional -->
+  <p class="welcome-message">
+    Aqui você pode gerenciar o status das unidades e acessar relatórios importantes. Comece agora!
+  </p>
+
+  <!-- Botão de navegação -->
+  <div class="button-group">
+    <a href="{{ url_for('status') }}" class="stButton stButton--primary">
+      <i class="fas fa-check-circle"></i> Ir para Status
+    </a>
+  </div>
 </div>
 {% endblock %}

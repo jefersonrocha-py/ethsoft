@@ -11,6 +11,8 @@ ethsoft-flask/
 │   ├── status_history.csv         # (inicialmente vazio ou não existe)
 │   ├── users.db                   # (será criado automaticamente)
 │   └── daily-reports/             # (PDFs gerados)
+│   └── dashboard-reports/         # (PDFs gerados)
+│   └── export/                    # Diretório para exporta PDF do relatorio
 ├── templates/                     # Diretorio dos Templates
 │   ├── base.html                  # Base da aplicação
 │   ├── login.html                 # Tela de Login

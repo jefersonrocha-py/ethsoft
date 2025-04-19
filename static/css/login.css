@@ -66,20 +66,19 @@ body {
     transform: translate(-50%, -50%);
     text-align: center;
     background: rgba(255, 255, 255, 0.1);
-    padding: 2rem;
+    padding: 1.5rem;
     border-radius: 30px;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     backdrop-filter: blur(10px);
     z-index: 1;
     
     /* Ajustes de tamanho */
-    height: 560px; 
+    height: 520px; 
     width: 90%;
-    max-width: 560px;
-    min-height: 300px; /* Altura mínima */
+    max-width: 520px;
+    min-height: 280px; /* Altura mínima */
     /* height: 400px;  Altura fixa, se necessário */
 }
-
 
 /* Título da Página */
 .login-container h1,
