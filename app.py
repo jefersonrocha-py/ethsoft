@@ -1,286 +1,520 @@
-import streamlit as st
+from flask import (
+    Flask, render_template, request, redirect,
+    url_for, session, flash, send_from_directory
+)
 import pandas as pd
 from datetime import datetime
-import io
-from fpdf import FPDF
-import plotly.express as px
 import unicodedata
 import os
+from fpdf import FPDF
+import plotly.express as px
+from werkzeug.security import generate_password_hash
+from units import lista_unidades, get_units_with_ids
 
+# Importar funções do banco de dados
+from database import (
+    init_db, load_history, save_history,
+    add_user, verify_credentials
+)
+
+app = Flask(__name__)
+app.secret_key = 'substitua-por-uma-chave-segura'
+
+# --- Configuração do Diretório ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+REPORT_DIR = os.path.join(DATA_DIR, 'daily-reports')
+DASHBOARD_DIR = os.path.join(DATA_DIR, 'dashboard-reports')
+EXPORT_DIR = os.path.join(DATA_DIR, 'exports')
+
+os.makedirs(REPORT_DIR, exist_ok=True)
+os.makedirs(DASHBOARD_DIR, exist_ok=True)
+os.makedirs(EXPORT_DIR, exist_ok=True)
+
+# --- Unidades ---
+# Removida a definição duplicada, mantendo apenas uma definição para 'unidades'
+unidades = get_units_with_ids()
+
+# --- Limpeza de texto para PDF ---
 def limpar_texto(texto):
-    if pd.isnull(texto):
-        return ""
-    texto = str(texto)
-    texto = unicodedata.normalize('NFKD', texto).encode('latin1', 'ignore').decode('latin1')
-    return texto
+    if texto is None:
+        return ''
+    txt = str(texto)
+    return unicodedata.normalize('NFKD', txt).encode('latin-1', 'ignore').decode('latin-1')
 
-st.set_page_config(page_title="ESoft - Modular 🚀", layout="wide")
-st.title("EthSoft - Modular 🚀")
+# --- PDF Report ---
+class PDFReport(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 10, limpar_texto(self.title), ln=True, align='C')
+        self.ln(5)
 
-if not os.path.exists("data"):
-    os.makedirs("data")
+    def generate(self, df, title):
+        self.title = title
+        self.add_page()
+        self.set_font('Arial', '', 10)
+        total = len(df)
+        on = (df.status == 'ON').sum()
+        off = (df.status == 'OFF').sum()
+        pct_on = on / total * 100 if total else 0
+        pct_off = off / total * 100 if total else 0
+        self.cell(0, 8, limpar_texto(f"Total: {total} | ON: {on} ({pct_on:.2f}%) | OFF: {off} ({pct_off:.2f}%)"), ln=True)
+        self.ln(5)
+        self.set_font('Arial', 'B', 9)
+        for h, w in zip(['Data', 'Unidade', 'Status'], [30, 110, 30]):
+            self.cell(w, 8, limpar_texto(h), border=1)
+        self.ln()
+        self.set_font('Arial', '', 8)
+        for _, r in df.iterrows():
+            self.cell(30, 6, limpar_texto(r.data.strftime('%Y-%m-%d')), border=1)
+            self.cell(110, 6, limpar_texto(r.unidade[:60]), border=1)
+            self.cell(30, 6, limpar_texto(r.status), border=1)
+            self.ln()
 
-if not os.path.exists("data/daily-reports"):
-    os.makedirs("data/daily-reports")
+# --- Dashboard PDF Report ---
+class DashboardPDFReport(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 14)
+        self.cell(0, 10, limpar_texto(self.title), ln=True, align='C')
+        self.ln(5)
 
-csv_path = os.path.join("data", "status_history.csv")
-if "status_history" not in st.session_state:
-    if os.path.exists(csv_path):
-        st.session_state.status_history = pd.read_csv(csv_path)
-    else:
-        st.session_state.status_history = pd.DataFrame(columns=["data", "id", "unidade", "status"])
-if "unit_status" not in st.session_state:
-    st.session_state.unit_status = {}
-if "selected_date" not in st.session_state:
-    st.session_state.selected_date = datetime.today().date()
-if "page" not in st.session_state:
-    st.session_state.page = "Status"
-# LISTA DE UNIDADES
-lista_unidades = [
-    "CRECHE MUNICIPAL ANTONIO FERNANDO DO REIS II (EXTENSÃO)",
-    "CRECHE MUNICIPAL JEAN PIERRE DOS SANTOS MOLINA",
-    "CRECHE MUNICIPAL JULIA MARIA DE JESUS",
-    "EMEF CAIC - AYRTON SENNA DA SILVA",
-    "EMEI NOSSA SENHORA DA ESPERANÇA",
-    "EMEF LUIZ PINHO DE CARVALHO FILHO",
-    "CRECHE COMUNITÁRIA CANTINHO DO ZEZINHO I",
-    "CRECHE COMUNITÁRIA LAR CINDERELA",
-    "CRECHE COMUNITÁRIA MUNDO DA CRIANÇA",
-    "CRECHE COMUNITÁRIA VOVÓ LIBÂNIA",
-    "CRECHE ESCOLA PEQUENO APRENDIZ",
-    "CRECHE MUNICIPAL JOSEFA MARIA",
-    "CRECHE MUNICIPAL CANTINHO DO ZEZINHO II",
-    "CRECHE MUNICIPAL CORA CORALINA",
-    "EMEIEF SEBASTIÃO RIBEIRO DA SILVA",
-    "CRECHE MUNICIPAL EL SHADAY",
-    "CRECHE MUNICIPAL GERALDA ERNESTINA",
-    "CRECHE MUNICIPAL JULIO PEREIRA DE ANDRADE",
-    "CRECHE MUNICIPAL LAR DA CRIANÇA FELIZ",
-    "CRECHE MUNICIPAL MARIA JOSEFA",
-    "CRECHE MUNICIPAL PAULO DE SOUZA",
-    "CRECHE MUNICIPAL QUARENTENÁRIO (EXTENSÃO N SRA DA ESPERANÇA)",
-    "CRECHE MUNICIPAL SANDRA ANTONELLI",
-    "CRECHE MUNICIPAL SANTA TEREZINHA",
-    "CRECHE MUNICIPAL SEITETSU IHA (ENG.)",
-    "CRECHE MUNICIPAL VOVÔ JOSÉ CAMPELO",
-    "EMEIEF ALBERTO SANTOS DUMONT",
-    "EMEF ANTÔNIO PACÍFICO",
-    "EMEF AUGUSTO SAINT'HILAIRE",
-    "EMEI CARLOS CALDEIRA",
-    "EMEI CIDADE DENAHA",
-    "EMEI CLEMENTE FERREIRA",
-    "EMEI DOM PEDRO I",
-    "EMEF DR. MARIO COVAS JUNIOR",
-    "EMEIEF DUQUE DE CAXIAS",
-    "EMEI EDMUNDO CAPELLARI",
-    "EMEIEF ERCÍLIA NOGUEIRA COBRA",
-    "EMEF FRANCISCO MARTINS DOS SANTOS",
-    "EMEI JOSÉ BORGES FERNANDES",
-    "EMEF LIONS CLUBE",
-    "EMEIEF MANOEL NASCIMENTO JÚNIOR",
-    "EMEIEF MARIA DE LOURDES BATISTA",
-    "EMEF MATTEO BEI II",
-    "EMEI MONTEIRO LOBATO",
-    "EMEIEF NILTON RIBEIRO",
-    "EMEI PADRE JOSÉ DE ANCHIETA",
-    "EMEI KELMA MARIA TOFFETTI GONÇALVE",
-    "EMEIEF JOSÉ MEIRELLES",
-    "EMEF LUIZ BENEDITINO FERREIRA",
-    "EMEF PROF. LEONOR GUIMARÃES ALVES STOFFEL",
-    "EMEF VERA LUCIA MACHADO MASSIS",
-    "EMEIEF GILSON KOOL MONTEIRO",
-    "EMEF PROFESSOR LÚCIO MARTINS RODRIGUES",
-    "EMEF PROFESSOR RENAN ALVES LEITE",
-    "EMEI PROFESSORA MARIA ELIZABETH RAMOS DA SILVA",
-    "EMEI PROVÍNCIA DE OKINAWA",
-    "EMEF RAQUEL DE CASTRO FERREIRA",
-    "EMEIEF REGINA CÉLIA DOS SANTOS",
-    "CRECHE COMUNITÁRIA PENIEL",
-    "EMEF UNIÃO CÍVICA FEMININA",
-    "EMEIEF VILA EMA",
-    "EMEI VILA JÓQUEI",
-    "CRECHE MUNICIPAL PROFª ONDINA MARQUES DE MELO",
-    "CRECHE VILA NOVA",
-    "CRECHE MUNICIPAL MARGARIDA",
-    "CRECHE PROFESSORA ANA CRISTINA SANTOS",
-    "EMEIEF MANOEL NASCIMENTO JÚNIOR II",
-    "CRECHE MUNICIPAL TIO JOSÉ",
-    "DAE DEPOSITO DE ALIMENTOS",
-    "DEMAS",
-    "CCO - CENTRO DE MONITORAMENTO DA PREFEITURA",
-    "CEJACON “CENTRO M. DE EDUCAÇÃO SUPLETIVA – ÁREA CONTINENTAL”",
-    "CEJAIN “CENTRO MUNICIPAL DE EDUCAÇÃO SUPLETIVA",
-    "AMEI NARIZINHO",
-    "AMEI VISCONDE DE SABUGOSA",
-    "CRECHE COMUNITÁRIA NAYLA AMOR A VIDA I",
-    "CRECHE COMUNITÁRIA NAYLA AMOR A VIDA II",
-    "CRECHE MUNICIPAL GRUPO DA PRECE",
-    "CRECHE NOSSA SENHORA DA ESPERANÇA",
-    "EMEI ADILZA DE O. ROSA SOBRAL",
-    "EMEIEF MAURO APARECIDO GODOY",
-    "EMEF NUMAA - ANA LUCIA ALMEIDA DE OLIVEIRA",
-    "EMEF PASTOR JOAQUIM RODRIGUES DA SILVA",
-    "EMEF CAROLINA DANTAS",
-    "EMEI ANUAR FRAHYA",
-    "CRECHE MUNICIPAL PROFº CELSO EDUARDO",
-    "AMEI EMILIA",
-    "CRECHE MUNICIPAL EDUARDO FURKINI",
-    "EMEF RAUL ROCHA DO AMARAL",
-    "EMEIEF EULINA TRINDADE",
-    "EMEF LAURA FILGUEIRAS",
-    "AMEI NARIZINHO II",
-    "CRECHE MUNICIPAL CATIAPOÃ",
-    "EMEF OCTÁVIO DE CÉSARE",
-    "AMEI REI PELÉ",
-    "EMEF ARMINDO RAMOS",
-    "EMEF PROFESSOR JACOB ANDRADE CÂMARA",
-    "PROJETO ESPECIAL 2 - 11/12",
-    "EMEI MATTEO BEI - 24/01",
-    "EMEF JORGE BIERRENBACH SENRA - 27/02",
-    "EMEF NUMAA II - ANA LUCIA ALMEIDA DE OLIVEIRA - 23/02",
-    "CRECHE ESCOLA PEQUENO APRENDIZ  - 16/03",
-    "CRECHE MUNICIPAL CANTINHO DO CÉU",
-    "CRECHE MUNICIPAL CRIANÇA ESPERANÇA - 17/03",
-    "EMEF ANTÔNIO FERNANDO DOS REIS - 15/01",
-    "EMEIEF JONAS RODRIGUES - 15/03",
-    "EMEF PROFESSOR CONSTANTE LUCIANO C. HOULMOUT - 24/03",
-    "EMEF REPÚBLICA DE PORTUGAL - 21/03",
-    "BIBLIOTECA MUNICIPAL SÃO VICENTE - 16/02",
-    "CRECHE MUNICIPAL VOVÔ RAIMUNDO - 05/03"
-]
-unidades = [{"id": i + 1, "unidade": nome} for i, nome in enumerate(lista_unidades)]
+    def generate(self, agg_data, summary, start_date, end_date, group_by):
+        self.title = f"Dashboard de Relatórios ({start_date} a {end_date})"
+        self.add_page()
+        
+        # Informações do filtro
+        self.set_font('Arial', 'B', 10)
+        self.cell(0, 8, limpar_texto(f"Período: {start_date} a {end_date} | Agrupamento: {group_by}"), ln=True)
+        self.ln(5)
+        
+        # Resumo
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 8, "Resumo:", ln=True)
+        self.set_font('Arial', '', 10)
+        self.cell(0, 8, limpar_texto(f"Total de Registros: {summary['total']}"), ln=True)
+        self.cell(0, 8, limpar_texto(f"Online: {summary['on']} ({summary['pct_on']:.2f}%)"), ln=True)
+        self.cell(0, 8, limpar_texto(f"Offline: {summary['off']}"), ln=True)
+        self.ln(10)
+        
+        # Tabela de dados
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 8, "Dados Agregados:", ln=True)
+        self.set_font('Arial', 'B', 9)
+        
+        # Cabeçalhos da tabela
+        col_widths = [40, 30, 30, 30, 30]
+        headers = ['Data', 'ON', 'OFF', 'Total', '% ON']
+        for h, w in zip(headers, col_widths):
+            self.cell(w, 8, limpar_texto(h), border=1)
+        self.ln()
+        
+        # Dados da tabela
+        self.set_font('Arial', '', 8)
+        for idx, row in agg_data.iterrows():
+            date_str = idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx)
+            self.cell(col_widths[0], 6, limpar_texto(date_str), border=1)
+            self.cell(col_widths[1], 6, limpar_texto(str(row.get('ON', 0))), border=1)
+            self.cell(col_widths[2], 6, limpar_texto(str(row.get('OFF', 0))), border=1)
+            self.cell(col_widths[3], 6, limpar_texto(str(row.get('Total', 0))), border=1)
+            self.cell(col_widths[4], 6, limpar_texto(f"{row.get('% ON', 0):.2f}%"), border=1)
+            self.ln()
 
-def exibir_status():
-    st.header("Status das Unidades 📊")
-    st.session_state.selected_date = st.date_input("Selecione a data do relatório", value=st.session_state.selected_date)
-    col1, col2, col3 = st.columns([1, 6, 3])
-    col1.markdown("**ID**")
-    col2.markdown("**Unidade**")
-    col3.markdown("**Status**")
-    online_count, offline_count = 0, 0
-    for unidade in unidades:
-        c1, c2, c3 = st.columns([1, 6, 3])
-        c1.write(unidade["id"])
-        c2.write(unidade["unidade"])
-        status_key = f"status_{unidade['id']}"
-        status = c3.toggle("", key=status_key, value=st.session_state.unit_status.get(unidade["id"], False))
-        st.session_state.unit_status[unidade["id"]] = status
-        if status:
-            online_count += 1
-        else:
-            offline_count += 1
-    st.markdown("---")
-    st.subheader("Resumo Atual")
-    st.write(f"**Total de Unidades:** {len(unidades)}")
-    st.write(f"**Online ✅:** {online_count}")
-    st.write(f"**Offline ❌:** {offline_count}")
-    if st.button("Gerar Relatório 📄"):
-        data_selecionada = st.session_state.selected_date
-        registros = [
-            {
-                "data": pd.Timestamp(data_selecionada),
-                "id": unidade["id"],
-                "unidade": unidade["unidade"],
-                "status": "ON" if st.session_state.unit_status[unidade["id"]] else "OFF"
-            }
-            for unidade in unidades
-        ]
-        df_registros = pd.DataFrame(registros)
-        st.session_state.status_history = pd.concat(
-            [st.session_state.status_history, df_registros], ignore_index=True)
-        st.session_state.status_history.to_csv(csv_path, index=False, encoding="utf-8")
-        nome_arquivo = f"relatorio_{data_selecionada.strftime('%Y-%m-%d')}.pdf"
-        caminho_arquivo = os.path.join("data/daily-reports", nome_arquivo)
-        pdf = gerar_pdf(df_registros, f"Relatório do dia {data_selecionada.strftime('%d/%m/%Y')}")
-        pdf.output(caminho_arquivo)
-        st.success(f"Relatório salvo: {caminho_arquivo}")
-        st.session_state.page = "Dashboard"
-        st.rerun()
+# --- Full Table PDF Report ---
+class FullTablePDFReport(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 14)
+        self.cell(0, 10, limpar_texto(self.title), ln=True, align='C')
+        self.ln(5)
 
-def gerar_pdf(df_hist, report_title):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=9)
-    pdf.cell(200, 10, txt=limpar_texto(report_title), ln=True, align='C')
-    pdf.ln(10)
-    total_reg = len(df_hist)
-    soma_on = (df_hist["status"] == "ON").sum()
-    soma_off = (df_hist["status"] == "OFF").sum()
-    pct_on = (soma_on / total_reg) * 100 if total_reg > 0 else 0
-    pct_off = (soma_off / total_reg) * 100 if total_reg > 0 else 0
-    pdf.cell(200, 10, txt=f"Total Registros: {total_reg}", ln=True)
-    pdf.cell(200, 10, txt=f"ON: {soma_on} ({pct_on:.2f}%)", ln=True)
-    pdf.cell(200, 10, txt=f"OFF: {soma_off} ({pct_off:.2f}%)", ln=True)
-    pdf.ln(5)
-    pdf.set_fill_color(220, 220, 220)
-    pdf.set_font("Arial", 'B', 8)
-    pdf.cell(40, 10, "Data", border=1, fill=True)
-    pdf.cell(110, 10, "Unidade", border=1, fill=True)
-    pdf.cell(30, 10, "Status", border=1, fill=True)
-    pdf.ln()
-    pdf.set_font("Arial", '', 8)
-    for _, row in df_hist.iterrows():
-        data = limpar_texto(str(row["data"].date()))
-        unidade = limpar_texto(row["unidade"])
-        status = limpar_texto(row["status"])
-        pdf.cell(40, 10, data, border=1)
-        pdf.cell(110, 10, unidade[:60], border=1)
-        pdf.cell(30, 10, status, border=1)
-        pdf.ln()
-    return pdf
+    def generate(self, df, start_date, end_date):
+        self.title = f"Relatório Completo de Unidades ({start_date} a {end_date})"
+        self.add_page('L')  # Landscape para acomodar mais colunas
+        
+        # Informações do filtro
+        self.set_font('Arial', 'B', 10)
+        self.cell(0, 8, limpar_texto(f"Período: {start_date} a {end_date}"), ln=True)
+        self.ln(5)
+        
+        # Resumo
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 8, "Resumo:", ln=True)
+        self.set_font('Arial', '', 10)
+        total = len(df)
+        on = (df.status == 'ON').sum()
+        off = (df.status == 'OFF').sum()
+        pct_on = on / total * 100 if total else 0
+        self.cell(0, 8, limpar_texto(f"Total de Registros: {total}"), ln=True)
+        self.cell(0, 8, limpar_texto(f"Online: {on} ({pct_on:.2f}%)"), ln=True)
+        self.cell(0, 8, limpar_texto(f"Offline: {off}"), ln=True)
+        self.ln(10)
+        
+        # Tabela de dados
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 8, "Tabela Completa de Unidades:", ln=True)
+        self.set_font('Arial', 'B', 9)
+        
+        # Cabeçalhos da tabela
+        col_widths = [25, 20, 180, 40]
+        headers = ['Data', 'ID', 'Unidade', 'Status']
+        for h, w in zip(headers, col_widths):
+            self.cell(w, 8, limpar_texto(h), border=1)
+        self.ln()
+        
+        # Dados da tabela
+        self.set_font('Arial', '', 8)
+        for _, r in df.iterrows():
+            date_str = r.data.strftime('%Y-%m-%d') if hasattr(r.data, 'strftime') else str(r.data)
+            self.cell(col_widths[0], 6, limpar_texto(date_str), border=1)
+            self.cell(col_widths[1], 6, limpar_texto(str(r.id)), border=1)
+            self.cell(col_widths[2], 6, limpar_texto(r.unidade[:100]), border=1)
+            self.cell(col_widths[3], 6, limpar_texto(r.status), border=1)
+            self.ln()
 
-def exibir_dashboard():
-    st.header("Dashboard de Relatórios 📈")
-    df_hist = st.session_state.status_history.copy()
-    if df_hist.empty:
-        st.warning("Nenhum relatório gerado ainda.")
+# --- Proteção de Rotas ---
+@app.before_request
+def require_login():
+    open_paths = {'/login', '/register', '/welcome'}
+    if request.path.startswith('/static/') or request.path in open_paths:
         return
-    df_hist["data"] = pd.to_datetime(df_hist["data"])
-    data_inicio, data_fim = st.date_input("Filtrar por período:", value=[df_hist["data"].min().date(), df_hist["data"].max().date()])
-    df_filtrado = df_hist[(df_hist["data"] >= pd.Timestamp(data_inicio)) & (df_hist["data"] <= pd.Timestamp(data_fim))]
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
 
-    filtro_tipo = st.radio("Agrupar por:", ["Diário", "Semanal", "Mensal"])
-    if filtro_tipo == "Diário":
-        df_agrupado = df_filtrado.groupby(df_filtrado["data"].dt.date)["status"].value_counts().unstack().fillna(0)
-    elif filtro_tipo == "Semanal":
-        df_agrupado = df_filtrado.groupby(df_filtrado["data"].dt.to_period("W").apply(lambda r: r.start_time))["status"].value_counts().unstack().fillna(0)
-    else:
-        df_agrupado = df_filtrado.groupby(df_filtrado["data"].dt.to_period("M").dt.to_timestamp())["status"].value_counts().unstack().fillna(0)
+# --- LOGIN ---
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        user = request.form['username']
+        pwd = request.form['password']
+        try:
+            user_data = verify_credentials(user, pwd)
+            if user_data:
+                session['user_id'] = user_data['id']
+                session['username'] = user_data['username']
+                return redirect(url_for('welcome'))
+            flash('Usuário ou senha inválidos.', 'error')
+        except Exception as e:
+            flash(str(e), 'error')
+    return render_template('login.html')
 
-    df_agrupado["ON"] = df_agrupado.get("ON", 0)
-    df_agrupado["OFF"] = df_agrupado.get("OFF", 0)
-    df_agrupado["Total"] = df_agrupado["ON"] + df_agrupado["OFF"]
-    df_agrupado["% ON"] = (df_agrupado["ON"] / df_agrupado["Total"]) * 100
+# --- REGISTER ---
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        email = request.form['email']
+        pwd = request.form['password']
+        conf = request.form['confirm_password']
+        if pwd != conf:
+            flash('Senhas não coincidem.', 'error')
+            return redirect(url_for('register'))
+        hashed = generate_password_hash(pwd)
+        try:
+            add_user(username, email, hashed)
+            flash('Registrado com sucesso! Faça login.', 'success')
+            return redirect(url_for('login'))
+        except Exception as e:
+            flash(str(e), 'error')
+    return render_template('register.html')
 
-    st.dataframe(df_agrupado[["ON", "OFF", "% ON"]].style.format({"% ON": "{:.2f}%"}))
+# --- WELCOME ---
+@app.route('/welcome')
+def welcome():
+    return render_template('welcome.html', username=session.get('username'))
 
-    total_reg = len(df_filtrado)
-    soma_on = (df_filtrado["status"] == "ON").sum()
-    soma_off = (df_filtrado["status"] == "OFF").sum()
-    pct_on = (soma_on / total_reg) * 100 if total_reg > 0 else 0
-    pct_off = (soma_off / total_reg) * 100 if total_reg > 0 else 0
-    st.markdown("---")
-    st.subheader("Resumo Geral")
-    st.write(f"**Total de Registros:** {total_reg}")
-    st.write(f"**ON ✅:** {soma_on} ({pct_on:.2f}%)")
-    st.write(f"**OFF ❌:** {soma_off} ({pct_off:.2f}%)")
+# --- STATUS ---
+@app.route('/status', methods=['GET', 'POST'])
+@app.route('/', methods=['GET', 'POST'])
+def status():
+    global df_history
+    if request.method == 'POST':
+        try:
+            # Corrigido: Usar datetime.strptime para converter a data com formato explícito
+            report_date_str = request.form['report_date']
+            rep_date = datetime.strptime(report_date_str, '%Y-%m-%d').date()
+            
+            regs = []
+            for u in unidades:
+                key = f"status_{u['id']}"
+                stat = 'ON' if request.form.get(key) == 'on' else 'OFF'
+                # Usar objeto datetime completo para compatibilidade com pandas
+                regs.append({
+                    'data': datetime.combine(rep_date, datetime.min.time()),  # Adiciona componente de tempo
+                    'id': u['id'], 
+                    'unidade': u['unidade'], 
+                    'status': stat
+                })
+            
+            df_new = pd.DataFrame(regs)
+            df_history = pd.concat([df_history, df_new], ignore_index=True)
+            save_history(df_history)
+            
+            pdf = PDFReport()
+            title = f"Relatório {rep_date.strftime('%d/%m/%Y')}"
+            pdf.generate(df_new, title)
+            fname = f"relatorio_{rep_date}.pdf"
+            pdf.output(os.path.join(REPORT_DIR, fname))
+            
+            flash(f'Relatório salvo: {fname}', 'success')
+            return redirect(url_for('dashboard'))
+        except Exception as e:
+            flash(f'Erro ao gerar relatório: {str(e)}', 'error')
+            return redirect(url_for('status'))
+    
+    # Por padrão, todas as unidades começam como online
+    online_count = len(unidades)
+    offline_count = 0
+    
+    today = datetime.today().strftime('%Y-%m-%d')
+    return render_template('status.html', 
+                          unidades=unidades, 
+                          current_date=today,
+                          online_count=online_count,
+                          offline_count=offline_count)
 
-    dados_graf = {"Status": ["ON ✅", "OFF ❌"], "Total": [soma_on, soma_off]}
-    fig = px.pie(pd.DataFrame(dados_graf), names="Status", values="Total", title="Status das Unidades",
-                 color="Status", color_discrete_map={"ON ✅": "green", "OFF ❌": "red"})
-    st.plotly_chart(fig, use_container_width=True)
+# --- DASHBOARD ---
+@app.route('/dashboard', methods=['GET', 'POST'])
+def dashboard():
+    global df_history
+    if df_history.empty:
+        flash('Nenhum relatório encontrado.', 'warning')
+        return redirect(url_for('status'))
+    
+    try:
+        df = df_history.copy()
+        
+        # Garantir que a coluna 'data' seja datetime
+        if not pd.api.types.is_datetime64_any_dtype(df['data']):
+            df['data'] = pd.to_datetime(df['data'], errors='coerce')
+        
+        start = df.data.min().date() if not df.empty else datetime.today().date()
+        end = df.data.max().date() if not df.empty else datetime.today().date()
+        group = 'Diário'
+        
+        if request.method == 'POST':
+            start_str = request.form.get('start_date', start)
+            end_str = request.form.get('end_date', end)
+            
+            # Converter strings para datetime
+            try:
+                start = datetime.strptime(start_str, '%Y-%m-%d').date()
+            except:
+                start = datetime.today().date()
+                
+            try:
+                end = datetime.strptime(end_str, '%Y-%m-%d').date()
+            except:
+                end = datetime.today().date()
+                
+            group = request.form.get('group_by', 'Diário')
+        
+        # Converter datas para datetime para comparação
+        start_dt = pd.to_datetime(start)
+        end_dt = pd.to_datetime(end)
+        
+        mask = (df.data >= start_dt) & (df.data <= end_dt)
+        dff = df.loc[mask]
+        
+        if dff.empty:
+            flash('Nenhum dado disponível para o período selecionado.', 'warning')
+            return redirect(url_for('status'))
+        
+        if group == 'Diário':
+            agg = dff.groupby(dff.data.dt.date).status.value_counts().unstack(fill_value=0)
+        elif group == 'Semanal':
+            agg = dff.groupby(dff.data.dt.to_period('W').apply(lambda r: r.start_time)).status.value_counts().unstack(fill_value=0)
+        else:
+            agg = dff.groupby(dff.data.dt.to_period('M').dt.to_timestamp()).status.value_counts().unstack(fill_value=0)
+        
+        agg = agg.assign(ON=lambda x: x.get('ON', 0), OFF=lambda x: x.get('OFF', 0))
+        agg['Total'] = agg.ON + agg.OFF
+        agg['% ON'] = agg.ON / agg.Total * 100
+        
+        # Gráfico de Barras
+        # Preparar dados para o gráfico de barras
+        bar_data = []
+        for idx, row in agg.iterrows():
+            date_str = idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx)
+            bar_data.append({'data': date_str, 'ON': row.get('ON', 0), 'OFF': row.get('OFF', 0)})
+        
+        bar_df = pd.DataFrame(bar_data)
+        if not bar_df.empty:
+            bar = px.bar(bar_df, x='data', y=['ON', 'OFF'], title='Status por Período',
+                        labels={'value': 'Quantidade', 'variable': 'Status'},
+                        color_discrete_map={'ON': '#4CAF50', 'OFF': '#F44336'})
+            bar_graph = bar.to_html(full_html=False)
+        else:
+            bar_graph = "<p>Sem dados suficientes para gerar o gráfico de barras</p>"
+        
+        summary = {
+            'total': len(dff),
+            'on': (dff.status == 'ON').sum(),
+            'off': (dff.status == 'OFF').sum(),
+            'pct_on': (dff.status == 'ON').sum() / len(dff) * 100 if len(dff) else 0
+        }
+        
+        return render_template(
+            'dashboard.html',
+            tables=[agg.to_html(classes='data', border=0)],
+            bar_graph=bar_graph,
+            summary=summary,
+            start=start, end=end, group=group
+        )
+    except Exception as e:
+        flash(f'Erro ao carregar dashboard: {str(e)}', 'error')
+        return redirect(url_for('status'))
 
-    if st.button("Exportar para PDF 🖨️"):
-        pdf = gerar_pdf(df_filtrado, "Relatório de Status")
-        pdf_output = pdf.output(dest='S').encode('latin1')
-        output = io.BytesIO(pdf_output)
-        st.download_button("Download PDF", data=output, file_name="relatorio_ethsoft.pdf", mime="application/pdf")
+# --- EXPORT DASHBOARD PDF ---
+@app.route('/export_dashboard_pdf')
+def export_dashboard_pdf():
+    global df_history
+    if df_history.empty:
+        flash('Nenhum relatório encontrado para exportar.', 'warning')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Obter parâmetros da URL
+        start_str = request.args.get('start', datetime.today().date().strftime('%Y-%m-%d'))
+        end_str = request.args.get('end', datetime.today().date().strftime('%Y-%m-%d'))
+        group = request.args.get('group', 'Diário')
+        
+        # Converter strings para datetime
+        try:
+            start = datetime.strptime(start_str, '%Y-%m-%d').date()
+        except:
+            start = datetime.today().date()
+            
+        try:
+            end = datetime.strptime(end_str, '%Y-%m-%d').date()
+        except:
+            end = datetime.today().date()
+        
+        # Processar dados
+        df = df_history.copy()
+        
+        # Garantir que a coluna 'data' seja datetime
+        if not pd.api.types.is_datetime64_any_dtype(df['data']):
+            df['data'] = pd.to_datetime(df['data'], errors='coerce')
+        
+        # Converter datas para datetime para comparação
+        start_dt = pd.to_datetime(start)
+        end_dt = pd.to_datetime(end)
+        
+        mask = (df.data >= start_dt) & (df.data <= end_dt)
+        dff = df.loc[mask]
+        
+        if dff.empty:
+            flash('Nenhum dado disponível para o período selecionado.', 'warning')
+            return redirect(url_for('dashboard'))
+        
+        # Agregar dados
+        if group == 'Diário':
+            agg = dff.groupby(dff.data.dt.date).status.value_counts().unstack(fill_value=0)
+        elif group == 'Semanal':
+            agg = dff.groupby(dff.data.dt.to_period('W').apply(lambda r: r.start_time)).status.value_counts().unstack(fill_value=0)
+        else:
+            agg = dff.groupby(dff.data.dt.to_period('M').dt.to_timestamp()).status.value_counts().unstack(fill_value=0)
+        
+        agg = agg.assign(ON=lambda x: x.get('ON', 0), OFF=lambda x: x.get('OFF', 0))
+        agg['Total'] = agg.ON + agg.OFF
+        agg['% ON'] = agg.ON / agg.Total * 100
+        
+        # Calcular resumo
+        summary = {
+            'total': len(dff),
+            'on': (dff.status == 'ON').sum(),
+            'off': (dff.status == 'OFF').sum(),
+            'pct_on': (dff.status == 'ON').sum() / len(dff) * 100 if len(dff) else 0
+        }
+        
+        # Gerar PDF
+        pdf = DashboardPDFReport()
+        pdf.generate(agg, summary, start, end, group)
+        
+        # Salvar PDF
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        fname = f"dashboard_{timestamp}.pdf"
+        pdf_path = os.path.join(DASHBOARD_DIR, fname)
+        pdf.output(pdf_path)
+        
+        flash(f'Dashboard exportado com sucesso!', 'success')
+        return send_from_directory(DASHBOARD_DIR, fname, as_attachment=True)
+    except Exception as e:
+        flash(f'Erro ao exportar dashboard: {str(e)}', 'error')
+        return redirect(url_for('dashboard'))
 
-    if st.button("Voltar ↩️"):
-        st.session_state.page = "Status"
-        st.rerun()
+# --- EXPORT FULL TABLE ---
+@app.route('/export_full_table')
+def export_full_table():
+    global df_history
+    if df_history.empty:
+        flash('Nenhum relatório encontrado para exportar.', 'warning')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Obter parâmetros da URL
+        start_str = request.args.get('start', datetime.today().date().strftime('%Y-%m-%d'))
+        end_str = request.args.get('end', datetime.today().date().strftime('%Y-%m-%d'))
+        
+        # Converter strings para datetime
+        try:
+            start = datetime.strptime(start_str, '%Y-%m-%d').date()
+        except:
+            start = datetime.today().date()
+            
+        try:
+            end = datetime.strptime(end_str, '%Y-%m-%d').date()
+        except:
+            end = datetime.today().date()
+        
+        # Processar dados
+        df = df_history.copy()
+        
+        # Garantir que a coluna 'data' seja datetime
+        if not pd.api.types.is_datetime64_any_dtype(df['data']):
+            df['data'] = pd.to_datetime(df['data'], errors='coerce')
+        
+        # Converter datas para datetime para comparação
+        start_dt = pd.to_datetime(start)
+        end_dt = pd.to_datetime(end)
+        
+        mask = (df.data >= start_dt) & (df.data <= end_dt)
+        dff = df.loc[mask]
+        
+        if dff.empty:
+            flash('Nenhum dado disponível para o período selecionado.', 'warning')
+            return redirect(url_for('dashboard'))
+        
+        # Ordenar por data e ID
+        dff = dff.sort_values(['data', 'id'])
+        
+        # Gerar PDF com tabela completa
+        pdf = FullTablePDFReport()
+        pdf.generate(dff, start, end)
+        
+        # Salvar PDF
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        fname = f"tabela_completa_{timestamp}.pdf"
+        pdf_path = os.path.join(EXPORT_DIR, fname)
+        pdf.output(pdf_path)
+        
+        flash(f'Tabela completa exportada com sucesso!', 'success')
+        return send_from_directory(EXPORT_DIR, fname, as_attachment=True)
+    except Exception as e:
+        flash(f'Erro ao exportar tabela completa: {str(e)}', 'error')
+        return redirect(url_for('dashboard'))
 
-if st.session_state.page == "Status":
-    exibir_status()
-elif st.session_state.page == "Dashboard":
-    exibir_dashboard()
+# --- LOGOUT ---
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+# --- DOWNLOAD PDF ---
+@app.route('/reports/<filename>')
+def download_report(filename):
+    return send_from_directory(REPORT_DIR, filename)
+
+if __name__ == '__main__':
+    init_db()
+    df_history = load_history()
+    app.run(host='0.0.0.0', port=5000, debug=True)

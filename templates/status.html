@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stHeader"><h1>Status das Unidades 📊</h1></div>
+<form method="post" class="stForm">
+  <label class="stDateInput">
+    Data do relatório:
+    <input type="date" name="report_date" value="{{current_date}}" required>
+  </label>
+  <div class="stColumns">
+    <div class="stColumn stColumn--narrow"><strong>ID</strong></div>
+    <div class="stColumn"><strong>Unidade</strong></div>
+    <div class="stColumn stColumn--narrow"><strong>Status</strong></div>
+  </div>
+  {% for u in unidades %}
+  <div class="stItem stColumns">
+    <div class="stColumn stColumn--narrow">{{u.id}}</div>
+    <div class="stColumn">{{u.unidade}}</div>
+    <div class="stColumn stColumn--narrow">
+      <label class="switch">
+        <input type="checkbox" name="status_{{u.id}}" class="unit-status-checkbox" value="on" checked>
+        <span class="slider round"></span>
+      </label>
+    </div>
+  </div>
+  {% endfor %}
+  <div class="stDivider"></div>
+  <div class="stSummary">
+    <span>Total de Unidades: {{unidades|length}}</span>
+    <span class="status-on">Online ✅: <span id="count-on">{{online_count}}</span></span>
+    <span class="status-off">Offline ❌: <span id="count-off">{{offline_count}}</span></span>
+  </div>
+  <button type="submit" class="stButton stButton--primary">Gerar Relatório 📄</button>
+</form>
+<script>
+  // JavaScript mínimo apenas para atualizar a contagem quando os checkboxes são alterados
+  const unitCheckboxes = document.querySelectorAll('.unit-status-checkbox');
+  const totalUnits = {{unidades|length}};
+  
+  // Função para atualizar as contagens de Online e Offline
+  function updateCounts() {
+    const on = [...unitCheckboxes].filter(i => i.checked).length;
+    document.getElementById('count-on').textContent = on;
+    document.getElementById('count-off').textContent = totalUnits - on;
+  }
+
+  // Adiciona listeners aos checkboxes para atualizar as contagens
+  unitCheckboxes.forEach(cb => cb.addEventListener('change', updateCounts));
+</script>
+{% endblock %}

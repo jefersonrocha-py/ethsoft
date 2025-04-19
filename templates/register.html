@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="particles-js"></div>
+<div class="login-container">
+    <head>
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+        <meta http-equiv="Pragma" content="no-cache">
+        <meta http-equiv="Expires" content="0">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+    </head>
+    <h1 class="neon-text">🚀 EthSoft - Registrar</h1>
+    <form method="POST" action="{{ url_for('register') }}">
+        <div class="input-group">
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" required />
+        </div>
+        <div class="input-group">
+            <label for="username">Login:</label>
+            <input type="text" id="username" name="username" required />
+        </div>
+        <div class="input-group password-container">
+            <label for="password">Senha:</label>
+            <input type="password" id="password" name="password" required />
+            <span class="toggle-password" onclick="togglePasswordVisibility()">
+                <i id="eye-icon" class="fas fa-eye"></i>
+            </span>
+        </div>
+        <div class="input-group password-container">
+            <label for="confirm_password">Confirmar Senha:</label>
+            <input type="password" id="confirm_password" name="confirm_password" required />
+            <span class="toggle-password" onclick="togglePasswordVisibility()">
+                <i id="eye-icon" class="fas fa-eye"></i>
+            </span>
+        </div>
+        <button type="submit">Registrar 🚀</button>
+        <p class="forgot-password">
+            Já tem conta?
+            <a href="{{ url_for('login') }}">Faça Login!</a>
+        </p>
+    </form>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+<script>
+  function togglePasswordVisibility() {
+    const pwd = document.getElementById('password');
+    const icon = document.getElementById('eye-icon');
+    if (pwd.type === 'password') {
+      pwd.type = 'text';
+      icon.classList.replace('fa-eye','fa-eye-slash');
+    } else {
+      pwd.type = 'password';
+      icon.classList.replace('fa-eye-slash','fa-eye');
+    }
+  }
+  particlesJS.load('particles-js','{{ url_for("static", filename="particles-config.json") }}',()=>{});
+</script>
+{% endblock %}

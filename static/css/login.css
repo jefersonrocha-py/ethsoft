@@ -1,0 +1,226 @@
+/* Estilos Página de Login */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Arial', sans-serif;
+    background-color: #0e1525; /* Fundo escuro para um visual futurista */
+    color: white;
+    overflow: hidden; /* Evita a barra de rolagem quando as partículas estiverem em movimento */
+}
+
+/* Fundo com Partículas */
+#particles-js {
+    position: fixed; /* Fixa o fundo no lugar */
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: -1; /* Garante que o fundo fique atrás de outros elementos */
+}
+
+/* Efeito Neon */
+.neon-text {
+    color: #ffffff;
+    text-shadow:
+        0 0 5px #00ff99,
+        0 0 10px #00ff99,
+        0 0 20px #00ff99,
+        0 0 40px #00ff99,
+        0 0 80px #00ff99;
+    animation: neon-glow 1.5s infinite alternate;
+}
+
+@keyframes neon-glow {
+    from {
+        text-shadow:
+            0 0 5px #00ff99,
+            0 0 10px #00ff99,
+            0 0 20px #00ff99,
+            0 0 40px #00ff99,
+            0 0 80px #00ff99;
+    }
+    to {
+        text-shadow:
+            0 0 10px #00ff99,
+            0 0 20px #00ff99,
+            0 0 30px #00ff99,
+            0 0 50px #00ff99,
+            0 0 100px #00ff99;
+    }
+}
+/* Fundo com Partículas */
+#particles-js {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+}
+
+.login-container,
+.forgot-password-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2rem;
+    border-radius: 30px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(10px);
+    z-index: 1;
+    
+    /* Ajustes de tamanho */
+    height: 560px; 
+    width: 90%;
+    max-width: 560px;
+    min-height: 300px; /* Altura mínima */
+    /* height: 400px;  Altura fixa, se necessário */
+}
+
+
+/* Título da Página */
+.login-container h1,
+.forgot-password-container h1 {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    color: #ffffff;
+    text-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+/* Subtítulo */
+.login-container p,
+.forgot-password-container p {
+    font-size: 1.2rem;
+    margin-bottom: 2rem;
+    color: #d3d3d3;
+}
+
+/* Container dos Inputs */
+.login-container div,
+.forgot-password-container div {
+    display: flex;
+    align-items: center;
+    margin-bottom: 2rem;
+    position: relative;
+}
+
+/* Rótulos dos Inputs */
+.login-container label,
+.forgot-password-container label {
+    font-size: 1rem;
+    color: #ffffff;
+    margin-right: 1rem;
+    min-width: 80px;
+    text-align: right;
+}
+
+/* Inputs de Formulário */
+.login-container input,
+.forgot-password-container input {
+    flex: 1;
+    padding: 0.5rem;
+    border: none;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    font-size: 1rem;
+}
+
+/* Placeholder dos Inputs */
+.login-container input::placeholder,
+.forgot-password-container input::placeholder {
+    color: #cccccc;
+}
+
+/* Ícone de Olho para Senha */
+.password-container {
+    position: relative;
+}
+
+.toggle-password {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #aaa;
+    font-size: 1.2rem;
+}
+
+.toggle-password:hover {
+    color: #555;
+}
+
+/* Botão de Envio */
+.login-container button,
+.forgot-password-container button {
+    width: 150px;
+    padding: 0.9rem;
+    margin-top: 1rem;
+    border: none;
+    border-radius: 50px;
+    background: #02933a;
+    color: rgb(8, 1, 1);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+/* Hover no Botão */
+.login-container button:hover,
+.forgot-password-container button:hover {
+    background: #62d891;
+}
+
+/* Link de Registro ou Voltar ao Login */
+.login-container a,
+.forgot-password-container a {
+    display: block;
+    margin-top: 1rem;
+    color: #007bff;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.3s ease;
+}
+
+/* Hover no Link */
+.login-container a:hover,
+.forgot-password-container a:hover {
+    text-decoration: underline;
+    color: #0056b3;
+}
+
+/* Checkbox e Texto "Lembrar-me" - Versão Corrigida */
+.remember-me {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 1rem 0;
+    justify-content: center;
+}
+
+.remember-me input[type="checkbox"] {
+    margin: 0;
+    width: 1.1rem;
+    height: 1.1rem;
+    cursor: pointer;
+}
+
+.remember-me label {
+    font-size: 0.9rem !important;
+    color: #ffffff !important;
+    margin: 0 !important;
+    min-width: auto !important;
+    text-align: left !important;
+    order: 2;
+    cursor: pointer;
+}
+
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Fundo com Partículas -->
+<div id="particles-js"></div>

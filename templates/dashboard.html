@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stHeader"><h1>Dashboard de Relatórios 📈</h1></div>
+<form method="post" class="stForm stForm--inline">
+  <label>Início:<input type="date" name="start_date" value="{{start}}"></label>
+  <label>Fim:<input type="date" name="end_date" value="{{end}}"></label>
+  <div class="stRadioGroup">
+    <label><input type="radio" name="group_by" value="Diário" {% if group=='Diário' %}checked{% endif %}> Diário</label>
+    <label><input type="radio" name="group_by" value="Semanal" {% if group=='Semanal' %}checked{% endif %}> Semanal</label>
+    <label><input type="radio" name="group_by" value="Mensal" {% if group=='Mensal' %}checked{% endif %}> Mensal</label>
+  </div>
+  <button type="submit" class="stButton">Filtrar</button>
+  <a href="{{ url_for('export_dashboard_pdf', start=start, end=end, group=group) }}" class="stButton stButton--primary">Exportar PDF 📄</a>
+  <a href="{{ url_for('export_full_table', start=start, end=end) }}" class="stButton stButton--secondary">Exportar Tabela Completa 📋</a>
+</form>
+<div class="stDataFrame">{{tables[0]|safe}}</div>
+<div class="stDivider"></div>
+<div class="stSummaryBlock">
+  <div><strong>Total Registros:</strong> {{summary.total}}</div>
+  <div><strong>ON ✅:</strong> {{summary.on}} ({{summary.pct_on|round(2)}}%)</div>
+  <div><strong>OFF ❌:</strong> {{summary.off}}</div>
+</div>
+<div class="stChart">
+  <h3>Status por Período</h3>
+  {{bar_graph|safe}}
+</div>
+{% endblock %}
